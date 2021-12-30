@@ -8,6 +8,7 @@ class CpuApplicationTests {
 
 	@Test
 	void contextLoads() {
+		System.out.println("Cpu-Bound-Application Test Start!");
 	}
 
 }
