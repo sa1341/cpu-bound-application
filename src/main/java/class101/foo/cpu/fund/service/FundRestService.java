@@ -30,7 +30,76 @@ public class FundRestService {
         this.mapper = mapper;
     }
 
+    private String getFundInfo(final String fundId) throws Exception {
+
+        Map<String, Object> result = new HashMap<>();
+        URL url = new URL("http://localhost:8080/api/v1/funds/" + fundId);
+        Proxy proxy = new Proxy(Proxy.Type.HTTP, new InetSocketAddress("localhost", 8000));
+        final HttpURLConnection conn = (HttpURLConnection) url.openConnection(proxy);
+
+        try (AutoCloseable closeable = () -> {
+            log.info("AutoCloseable invoke close()");
+            conn.disconnect();
+        }) {
+            conn.setRequestMethod(HttpMethod.GET.name());
+            conn.setConnectTimeout(5000);
+            conn.setReadTimeout(5000);
+            conn.setDoInput(true);
+            conn.setDoOutput(true);
+            conn.setUseCaches(false);
+            conn.setRequestProperty("Accept", "application/json");
+            conn.setRequestProperty("Content-Type", "application/json");
+
+            Charset charset = Charset.forName("UTF-8");
+
+            int responseCode = conn.getResponseCode();
+            log.info("status code: [{}]", responseCode);
+
+            // 정상적으로 응답이 오면 형변환
+            if (responseCode == HttpURLConnection.HTTP_OK || responseCode == HttpURLConnection.HTTP_CREATED) {
+                try (BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream(), charset));) {
+                    StringBuilder builder = new StringBuilder();
+                    String str;
+
+                    while ((str = br.readLine()) != null) {
+                        builder.append(str);
+                    }
+
+                    try {
+                        result.put("result", builder.toString());
+                    } catch (Exception e) {
+                        throw new RuntimeException("JSON Parsing Error");
+                    }
+                }
+            } else {
+                return getErrMsg(conn, charset);
+            }
+        }
+
+        return (String) result.get("result");
+    }
+
+    private String getErrMsg(HttpURLConnection conn, Charset charset) throws Exception {
+
+        String errCn = null;
+        StringBuilder builder = new StringBuilder();
+
+        try (InputStreamReader errIr = new InputStreamReader(conn.getErrorStream(), charset);
+             BufferedReader errBr = new BufferedReader(errIr);
+        ) {
+
+            while ((errCn = errBr.readLine()) != null) {
+                builder.append(errCn);
+            }
+        }
+        throw new Exception("통신 실패... ERROR MESSAGE: " + builder.toString());
+    }
+
+
     public Map<String, Object> sendFundInfo(final FndProdDto fndProdDto) throws Exception {
+
+        String status = getFundInfo(fndProdDto.getFundCod());
+        log.info("Status: [{}]", status);
 
         Map<String, Object> result = new HashMap<>();
         URL url = new URL("http://localhost:8080/api/v1/funds/sync-fund");
@@ -81,8 +150,11 @@ public class FundRestService {
                     }
                 }
             } else {
-                throw new RuntimeException("통신 실패...");
+
+                getErrMsg(conn, charset);
             }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
         return result;
